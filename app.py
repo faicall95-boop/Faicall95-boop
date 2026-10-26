@@ -7,7 +7,7 @@ bot = telebot.TeleBot(TOKEN, threaded=False) # Important pour Render
 app = Flask(__name__)
 
 # L'URL de ton service Render
-URL = "https://faicall95-boop.onrender.com/"
+URL = "https://faicall95-boop1.onrender.com/"
 
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
