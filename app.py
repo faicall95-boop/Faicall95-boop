@@ -8,13 +8,13 @@ import threading
 from flask import Flask
 
 # ==========================================
-# 🔑 CONFIGURATION TELEGRAM (Via Render)
+# 🔑 CONFIGURATION
 # ==========================================
 TELEGRAM_TOKEN = os.environ.get('8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE')
 TELEGRAM_CHAT_ID = os.environ.get('617879156')
 
 # ==========================================
-# PARTIE 1 : LES AGENTS
+# PARTIE 1 : LES AGENTS (Ton code d'origine)
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -124,7 +124,7 @@ def chercher_pepites_solana():
         return []
 
 # ==========================================
-# PARTIE 3 : ENVOI TELEGRAM & LOGIQUE
+# PARTIE 3 : ENVOI TELEGRAM
 # ==========================================
 def envoyer_alerte_telegram(message):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -147,12 +147,11 @@ def analyser_marche(nom, prix):
     return {"nom": nom, "prix": prix[-1], "buys": votes.count(1), "sells": votes.count(-1)}
 
 # ==========================================
-# PARTIE 4 : LA BOUCLE EN ARRIÈRE-PLAN (Le cerveau du bot)
+# PARTIE 4 : LA BOUCLE D'ANALYSE
 # ==========================================
 def boucle_analyse():
     print("🌍 Bot ULTIME démarré...")
-    time.sleep(10) # Petite pause pour laisser Render démarrer
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Je surveille BTC, Or, Nasdaq et je chasse les pépites sur Solana.")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Je surveille les marchés et les pépites Solana.")
     
     derniers_signaux = {"BTC": "NEUTRE", "GOLD": "NEUTRE", "NASDAQ": "NEUTRE"}
     deja_envoyes_solana = set()
@@ -160,8 +159,6 @@ def boucle_analyse():
 
     while True:
         try:
-            print(f"\n--- Analyse {time.strftime('%H:%M:%S')} ---")
-            
             res_btc = analyser_marche("BTC", recuperer_prix_binance("BTCUSDT"))
             res_gold = analyser_marche("GOLD", recuperer_prix_yahoo("GC=F"))
             res_nasdaq = analyser_marche("NASDAQ", recuperer_prix_yahoo("NQ=F"))
@@ -188,7 +185,6 @@ def boucle_analyse():
                 envoyer_alerte_telegram(msg_statut)
 
             if compteur_minutes % 10 == 0:
-                print("🔎 Scan des pépites Solana en cours...")
                 pepites = chercher_pepites_solana()
                 for token in pepites:
                     if token['nom'] not in deja_envoyes_solana:
@@ -203,11 +199,10 @@ def boucle_analyse():
                         msg += f"\n🔗 [Voir sur DEX Screener]({token['url']})\n⚠️ *DYOR avant d'investir.*"
                         envoyer_alerte_telegram(msg)
                         deja_envoyes_solana.add(token['nom'])
-                        print(f"✅ Pépite signalée : {token['nom']}")
         except Exception as e:
             print(f"Erreur dans la boucle : {e}")
 
-        time.sleep(60) # Attend 1 minute avant de recommencer
+        time.sleep(60)
 
 # ==========================================
 # PARTIE 5 : SERVEUR WEB POUR RENDER
@@ -219,11 +214,11 @@ def home():
     return "Bot d'analyse actif en arrière-plan."
 
 if __name__ == "__main__":
-    # On lance l'analyse dans un fil séparé (Thread)
+    # On lance l'analyse dans un fil séparé
     t = threading.Thread(target=boucle_analyse)
     t.daemon = True
     t.start()
     
-    # On lance le serveur web (Render en a besoin)
+    # On lance le serveur web
     port = int(os.environ.get('PORT', 10000))
     app.run(host="0.0.0.0", port=port)
