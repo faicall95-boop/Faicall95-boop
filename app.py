@@ -10,8 +10,8 @@ from flask import Flask
 # ==========================================
 # 🔑 CONFIGURATION TELEGRAM (Via Render)
 # ==========================================
-TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-TELEGRAM_CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
+TELEGRAM_TOKEN = os.environ.get('8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE')
+TELEGRAM_CHAT_ID = os.environ.get('617879156')
 
 # ==========================================
 # PARTIE 1 : LES AGENTS
