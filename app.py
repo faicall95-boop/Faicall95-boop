@@ -169,10 +169,9 @@ def boucle_bot():
 
     while True:
         print(f"\n--- Analyse {time.strftime('%H:%M:%S')} ---")
-        
-        res_btc = analyser_marche("BTC", recuperer_prix_binance("BTCUSDT"))
-        res_eth = analyser_marche("ETH", recuperer_prix_binance("ETHUSDT"))
-        res_sol = analyser_marche("SOL", recuperer_prix_binance("SOLUSDT"))
+        res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
+        res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
+        res_sol = analyser_marche("SOL", recuperer_prix_yahoo("SOL-USD"))
         
         res_gold = analyser_marche("GOLD", recuperer_prix_yahoo("GC=F"))
         res_nasdaq = analyser_marche("NASDAQ", recuperer_prix_yahoo("NQ=F"))
