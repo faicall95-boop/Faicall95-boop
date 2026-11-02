@@ -12,7 +12,7 @@ from flask import Flask
 # ==========================================
 # ⚠️ ATTENTION : Votre token est visible sur votre capture d'écran. 
 # Il est conseillé de le régénérer via BotFather sur Telegram pour des raisons de sécurité.
-"8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" # Mettez votre vrai token en entier ici
+TELEGRAM_TOKEN ="8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" # Mettez votre vrai token en entier ici
 TELEGRAM_CHAT_ID = "617879156"
 
 # Configuration Flask pour garder le bot en vie (nécessaire pour Render/Railway)
