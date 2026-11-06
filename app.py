@@ -8,14 +8,12 @@ import threading
 from flask import Flask
 
 # ==========================================
-# 🔑 CONFIGURATION (Directement dans le code)
+# 🔑 CONFIGURATION TELEGRAM
 # ==========================================
-# ⚠️ ATTENTION : Votre token est visible sur votre capture d'écran. 
-# Il est conseillé de le régénérer via BotFather sur Telegram pour des raisons de sécurité.
-TELEGRAM_TOKEN ="8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" # Mettez votre vrai token en entier ici
+# ⚠️ REMPLACE CES VALEURS PAR LES TIENNES
+TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
 TELEGRAM_CHAT_ID = "617879156"
 
-# Configuration Flask pour garder le bot en vie (nécessaire pour Render/Railway)
 app = Flask(__name__)
 
 @app.route('/')
@@ -23,7 +21,7 @@ def home():
     return "Bot en cours d'exécution !"
 
 # ==========================================
-# PARTIE 1 : LES AGENTS
+# PARTIE 1 : LES AGENTS D'ANALYSE (15m)
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -72,19 +70,51 @@ def agent_support_resistance(prices):
     elif prix_actuel >= plus_haut * 0.99: return -1
     return 0
 
-# ==========================================
-# PARTIE 2 : RÉCUPÉRATION DES PRIX
-# ==========================================
-def recuperer_prix_binance(symbole="BTCUSDT"):
-    url = f"https://api.binance.com/api/v3/klines?symbol={symbole}&interval=15m&limit=100"
-    try:
-        context = ssl._create_unverified_context()
-        requete = urllib.request.urlopen(url, timeout=10, context=context)
-        donnees = json.loads(requete.read().decode('utf-8'))
-        return [float(bougie[4]) for bougie in donnees]
-    except Exception as e:
-        return []
+def agent_smart_money(prices):
+    if len(prices) < 96: return 0
+    prix_actuel = prices[-1]
+    
+    sma_20 = sum(prices[-20:]) / 20
+    variance = sum((p - sma_20) ** 2 for p in prices[-20:]) / 20
+    ecart_type = variance ** 0.5
+    bb_superieure = sma_20 + (2 * ecart_type)
+    bb_inferieure = sma_20 - (2 * ecart_type)
+    
+    plus_haut = max(prices[-96:])
+    plus_bas = min(prices[-96:])
+    fib_618 = plus_haut - ((plus_haut - plus_bas) * 0.618)
+    
+    if (fib_618 * 0.995 <= prix_actuel <= fib_618 * 1.005) and prix_actuel < sma_20:
+        return 1
+    if prix_actuel <= bb_inferieure * 0.998:
+        return 1
+    if prix_actuel >= bb_superieure * 0.998:
+        return -1
+    return 0
 
+# ==========================================
+# PARTIE 2 : L'AGENT DECISIONNEL (Conseils)
+# ==========================================
+def agent_conseil(prices, buys, sells):
+    if len(prices) < 96: return "⏳ Données insuffisantes"
+    
+    prix_actuel = prices[-1]
+    sma_50 = sum(prices[-50:]) / 50
+    tendance_haussiere = prix_actuel > sma_50
+    tendance_baissiere = prix_actuel < sma_50
+    
+    if buys >= 5 and tendance_haussiere:
+        return "🟢 **ACHAT FORT**"
+    if sells >= 5:
+        return "🔴 **VENTE FORTE**"
+    if sells >= 5 and tendance_baissiere:
+        return "🔴 **VENTE FORTE CONFIRMÉE**"
+        
+    return "⚪ ATTENDRE"
+
+# ==========================================
+# PARTIE 3 : RÉCUPÉRATION DES PRIX
+# ==========================================
 def recuperer_prix_yahoo(symbole):
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=15m&range=5d"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
@@ -99,41 +129,32 @@ def recuperer_prix_yahoo(symbole):
     except Exception as e:
         return []
 
-def chercher_pepites_solana():
-    url = "https://api.dexscreener.com/latest/dex/search?q=SOL"
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    try:
-        context = ssl._create_unverified_context()
-        req = urllib.request.Request(url, headers=headers)
-        requete = urllib.request.urlopen(req, timeout=10, context=context)
-        donnees = json.loads(requete.read().decode('utf-8'))
-        paires = donnees.get('pairs', [])
-        pepites = []
-        for paire in paires:
-            if paire.get('chainId') != 'solana': continue
-            volume_24h = paire.get('volume', {}).get('h24', 0)
-            liquidite = paire.get('liquidity', {}).get('usd', 0)
-            if volume_24h > 200000 and liquidite > 50000:
-                info = paire.get('info', {})
-                socials = info.get('socials', [])
-                a_un_lien_social = any(s.get('type') in ['twitter', 'telegram'] for s in socials)
-                if a_un_lien_social:
-                    pepites.append({
-                        'nom': paire.get('baseToken', {}).get('symbol', 'INCONNU'),
-                        'prix': paire.get('priceUsd', '0'),
-                        'volume': volume_24h,
-                        'liquidite': liquidite,
-                        'change_24h': paire.get('priceChange', {}).get('h24', 0),
-                        'url': paire.get('url', ''),
-                        'socials': socials
-                    })
-        pepites.sort(key=lambda x: x['volume'], reverse=True)
-        return pepites[:2]
-    except Exception as e:
-        return []
+# --- LE NOUVEAU SCANNER CRYPTO < 2 CENTIMES ---
+def scanner_cryptos_pas_cheres():
+    # Liste de nos cryptos cibles (Symboles Yahoo Finance)
+    cryptos_cibles = {
+        "VANRY": "VANRY-USD",
+        "CSPR": "CSPR-USD",
+        "CORE": "CORE-USD",
+        "ACT": "ACT-USD" # Si ACT n'est pas sur Yahoo, il sera ignoré
+    }
+    
+    trouvailles = []
+    for nom, symbole in cryptos_cibles.items():
+        prix = recuperer_prix_yahoo(symbole)
+        if prix and len(prix) > 0:
+            dernier_prix = prix[-1]
+            # On vérifie si c'est sous les 2 centimes (0.02 $)
+            if dernier_prix < 0.02:
+                trouvailles.append({
+                    'nom': nom,
+                    'prix': f"{dernier_prix:.6f}",
+                    'url': f"https://finance.yahoo.com/quote/{symbole}"
+                })
+    return trouvailles
 
 # ==========================================
-# PARTIE 3 : ENVOI TELEGRAM & LOGIQUE
+# PARTIE 4 : ENVOI TELEGRAM & LOGIQUE
 # ==========================================
 def envoyer_alerte_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -148,27 +169,49 @@ def envoyer_alerte_telegram(message):
         print(f"❌ Erreur Telegram : {e}")
 
 def analyser_marche(nom, prix):
-    if not prix or len(prix) < 50: return None
-    votes = [agent_trend(prix), agent_rsi(prix), agent_breakout(prix), agent_macd(prix), agent_support_resistance(prix)]
-    return {"nom": nom, "prix": prix[-1], "buys": votes.count(1), "sells": votes.count(-1)}
+    if not prix or len(prix) < 96: return None
+    
+    votes = [
+        agent_trend(prix), 
+        agent_rsi(prix), 
+        agent_breakout(prix), 
+        agent_macd(prix), 
+        agent_support_resistance(prix),
+        agent_smart_money(prix)
+    ]
+    
+    buys = votes.count(1)
+    sells = votes.count(-1)
+    conseil_final = agent_conseil(prix, buys, sells)
+    
+    return {
+        "nom": nom, 
+        "prix": prix[-1], 
+        "buys": buys, 
+        "sells": sells,
+        "conseil": conseil_final
+    }
 
 # ==========================================
-# PARTIE 4 : BOUCLE PRINCIPALE (Dans un thread)
+# PARTIE 5 : BOUCLE PRINCIPALE
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME démarré...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Surveillance de l'Or, Nasdaq, CAC40, DAX, Dow Jones, BTC, ETH, SOL et pépites Solana.")
+    print("🌍 Bot ULTIME démarré. Signaux Forts + Scanner < 0.02$...")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Je te préviendrai pour les ACHATS/VENTES FORTS sur les indices/cryptos majeures, et je scannerai les cryptos sous les 2 centimes.")
 
-    derniers_signaux = {
-        "BTC": "NEUTRE", "ETH": "NEUTRE", "SOL": "NEUTRE",
-        "GOLD": "NEUTRE", "NASDAQ": "NEUTRE", "FR40": "NEUTRE", 
-        "DE40": "NEUTRE", "DJ": "NEUTRE"
+    derniers_signaux_forts = {
+        "BTC": "", "ETH": "", "SOL": "",
+        "GOLD": "", "NASDAQ": "", "FR40": "", 
+        "DE40": "", "DJ": ""
     }
-    deja_envoyes_solana = set()
+    
+    cryptos_deja_annoncees = set() # Pour ne pas répéter les alertes < 2 centimes
     compteur_minutes = 0
-
+    
     while True:
         print(f"\n--- Analyse {time.strftime('%H:%M:%S')} ---")
+        
+        # 1. ANALYSE DES MARCHES MAJEURS (BTC, OR, INDICES...)
         res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
         res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
         res_sol = analyser_marche("SOL", recuperer_prix_yahoo("SOL-USD"))
@@ -181,54 +224,61 @@ def boucle_bot():
         
         resultats = [r for r in [res_btc, res_eth, res_sol, res_gold, res_nasdaq, res_fr40, res_de40, res_dj] if r is not None]
         
-        msg_statut = "📊 *Résumé des Marchés*\n\n"
-        
         for r in resultats:
             nom = r["nom"]
-            if nom == "BTC": emoji = "₿"
-            elif nom in ["ETH", "SOL"]: emoji = "🪙"
-            elif nom == "GOLD": emoji = "🥇"
-            else: emoji = "📈"
             
-            msg_statut += f"{emoji} *{nom}* : {r['prix']:.2f} $ | A:{r['buys']}/5 V:{r['sells']}/5\n"
-            
-            if r["buys"] >= 4 and derniers_signaux.get(nom) != "ACHAT":
-                envoyer_alerte_telegram(f"🚨 *CONSENSUS ACHAT (4/5)* sur {nom} {emoji}\nPrix : `{r['prix']:.2f} $`")
-                derniers_signaux[nom] = "ACHAT"
-            elif r["sells"] >= 4 and derniers_signaux.get(nom) != "VENTE":
-                envoyer_alerte_telegram(f"🚨 *CONSENSUS VENTE (4/5)* sur {nom} {emoji}\nPrix : `{r['prix']:.2f} $`")
-                derniers_signaux[nom] = "VENTE"
-            elif r["buys"] < 4 and r["sells"] < 4:
-                derniers_signaux[nom] = "NEUTRE"
+            # Filtre Achat/Vente Fort uniquement
+            if "ACHAT FORT" in r["conseil"] or "VENTE FORTE" in r["conseil"]:
+                
+                if derniers_signaux_forts.get(nom) != "DEJA_ENVOYE":
+                    
+                    if nom == "BTC": emoji = "₿"
+                    elif nom in ["ETH", "SOL"]: emoji = "🪙"
+                    elif nom == "GOLD": emoji = "🥇"
+                    else: emoji = "📈"
+                    
+                    if "ACHAT" in r["conseil"]:
+                        titre = "🚀🚀 *SIGNAL D'ACHAT FORT* 🚀🚀"
+                        action = "Opportunité d'entrée. Place ton Stop-Loss !"
+                    else:
+                        titre = "🩸🩸 *SIGNAL DE VENTE FORTE* 🩸🩸"
+                        action = "Le marché se retourne ! Vends ou sécurise tes gains."
 
+                    msg_alerte = (
+                        f"{titre}\n\n"
+                        f"{emoji} Actif : *{nom}*\n"
+                        f"💰 Prix : `{r['prix']:.2f} $`\n"
+                        f"📊 Consensus : Achats {r['buys']}/6 | Ventes {r['sells']}/6\n"
+                        f"📈 Tendance : {'Haussière' if 'ACHAT' in r['conseil'] else 'Baissière'}\n\n"
+                        f"⚠️ *Action* : {action}"
+                    )
+                    envoyer_alerte_telegram(msg_alerte)
+                    derniers_signaux_forts[nom] = "DEJA_ENVOYE"
+            else:
+                derniers_signaux_forts[nom] = ""
+
+        # 2. SCANNER CRYPTOS < 2 CENTIMES (Toutes les 30 minutes pour éviter le spam)
         compteur_minutes += 1
-        if compteur_minutes % 15 == 0:
-            envoyer_alerte_telegram(msg_statut)
-
-        if compteur_minutes % 10 == 0:
-            print("🔎 Scan des pépites Solana en cours...")
-            pepites = chercher_pepites_solana()
-            for token in pepites:
-                if token['nom'] not in deja_envoyes_solana:
-                    msg = f"💎 *Pépite Solana Détectée*\n\n"
-                    msg += f"🪙 *{token['nom']}*\n💰 Prix : `{token['prix']} $`\n"
-                    msg += f"📊 Var 24h : `{token['change_24h']}%`\n"
-                    msg += f"💧 Liquidité : `{token['liquidite']:,.0f} $`\n"
-                    msg += f"📈 Volume : `{token['volume']:,.0f} $`\n\n"
-                    for social in token['socials']:
-                        if social.get('type') == 'twitter': msg += f"🐦 [Twitter/X]({social['url']})\n"
-                        elif social.get('type') == 'telegram': msg += f"✈️ [Telegram]({social['url']})\n"
-                    msg += f"\n🔗 [Voir sur DEX Screener]({token['url']})\n⚠️ *DYOR avant d'investir.*"
+        if compteur_minutes % 30 == 0:
+            print("🔎 Scan des cryptos à moins de 2 centimes...")
+            trouvailles = scanner_cryptos_pas_cheres()
+            
+            for crypto in trouvailles:
+                if crypto['nom'] not in cryptos_deja_annoncees:
+                    msg = f"🪙 *Crypto à moins de 2 centimes repérée*\n\n"
+                    msg += f"🆔 *{crypto['nom']}*\n"
+                    msg += f"💰 Prix actuel : `{crypto['prix']} $`\n\n"
+                    msg += f"🔗 [Voir le graphique sur Yahoo Finance]({crypto['url']})\n"
+                    msg += f"⚠️ *Attention : Très volatile. Fais tes propres recherches.*"
+                    
                     envoyer_alerte_telegram(msg)
-                    deja_envoyes_solana.add(token['nom'])
-                    print(f"✅ Pépite signalée : {token['nom']}")
+                    cryptos_deja_annoncees.add(crypto['nom'])
+                    print(f"✅ Crypto signalée : {crypto['nom']}")
 
         time.sleep(60)
 
-# Lancement du bot en arrière-plan pour ne pas bloquer Flask
 threading.Thread(target=boucle_bot, daemon=True).start()
 
 if __name__ == "__main__":
-    # Flask utilise la variable d'environnement PORT (Render/Railway)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
