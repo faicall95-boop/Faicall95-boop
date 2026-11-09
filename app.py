@@ -4,14 +4,17 @@ import urllib.parse
 import json
 import time
 import ssl
+import threading
 from flask import Flask
 
 # ==========================================
 # 🔑 CONFIGURATION TELEGRAM
 # ==========================================
-# ⚠️ REMPLACE CES VALEURS PAR LES TIENNES
 TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
 TELEGRAM_CHAT_ID = "617879156"
+
+# On affiche un message IMMÉDIATEMENT au démarrage du fichier
+print("🚀 FICHIER APP.PY CHARGÉ - Démarrage de Flask...")
 
 app = Flask(__name__)
 
@@ -124,27 +127,6 @@ def recuperer_prix_yahoo(symbole):
     except Exception as e:
         return []
 
-# --- SCANNER CRYPTO < 2 CENTIMES ---
-def scanner_cryptos_pas_cheres():
-    cryptos_cibles = {
-        "VANRY": "VANRY-USD",
-        "CSPR": "CSPR-USD",
-        "CORE": "CORE-USD",
-        "ACT": "ACT-USD"
-    }
-    trouvailles = []
-    for nom, symbole in cryptos_cibles.items():
-        prix = recuperer_prix_yahoo(symbole)
-        if prix and len(prix) > 0:
-            dernier_prix = prix[-1]
-            if dernier_prix < 0.02:
-                trouvailles.append({
-                    'nom': nom,
-                    'prix': f"{dernier_prix:.6f}",
-                    'url': f"https://finance.yahoo.com/quote/{symbole}"
-                })
-    return trouvailles
-
 # ==========================================
 # PARTIE 4 : ENVOI TELEGRAM & LOGIQUE
 # ==========================================
@@ -174,19 +156,17 @@ def analyser_marche(nom, prix):
     }
 
 # ==========================================
-# PARTIE 5 : BOUCLE PRINCIPALE
+# PARTIE 5 : BOUCLE PRINCIPALE (Dans un Thread)
 # ==========================================
 def boucle_bot():
     print("🌍 Bot ULTIME (4H) démarré. En attente de signaux forts...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Je te préviendrai uniquement pour les ACHATS FORTS et VENTES FORTES.")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Je te préviendrai pour les ACHATS et VENTES FORTS.")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
         "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
         "EURUSD": "", "GBPUSD": "", "USDJPY": "", "USDCHF": ""
     }
-    cryptos_deja_annoncees = set()
-    compteur_minutes = 0
     
     while True:
         print(f"\n--- Analyse 4H {time.strftime('%H:%M:%S')} ---")
@@ -218,50 +198,29 @@ def boucle_bot():
                     
                     if "ACHAT" in r["conseil"]:
                         titre = "🚀🚀 *SIGNAL D'ACHAT FORT (4H)* 🚀🚀"
-                        action = "Opportunité d'entrée. Place ton Stop-Loss !"
                     else:
                         titre = "🩸🩸 *SIGNAL DE VENTE FORTE (4H)* 🩸🩸"
-                        action = "Le marché se retourne ! Vends ou sécurise tes gains."
 
                     msg_alerte = (
                         f"{titre}\n\n"
                         f"{emoji} Actif : *{nom}*\n"
                         f"💰 Prix : `{r['prix']:.4f} $`\n"
                         f"📊 Consensus : Achats {r['buys']}/6 | Ventes {r['sells']}/6\n"
-                        f"📈 Tendance : {'Haussière' if 'ACHAT' in r['conseil'] else 'Baissière'}\n\n"
-                        f"⚠️ *Action* : {action}"
                     )
                     envoyer_alerte_telegram(msg_alerte)
                     derniers_signaux_forts[nom] = "DEJA_ENVOYE"
             else:
                 derniers_signaux_forts[nom] = ""
 
-        compteur_minutes += 1
-        if compteur_minutes % 30 == 0:
-            print("🔎 Scan des cryptos à moins de 2 centimes...")
-            trouvailles = scanner_cryptos_pas_cheres()
-            for crypto in trouvailles:
-                if crypto['nom'] not in cryptos_deja_annoncees:
-                    msg = f"🪙 *Crypto à moins de 2 centimes repérée*\n\n"
-                    msg += f"🆔 *{crypto['nom']}*\n"
-                    msg += f"💰 Prix actuel : `{crypto['prix']} $`\n\n"
-                    msg += f"🔗 [Voir le graphique]({crypto['url']})\n"
-                    msg += f"⚠️ *Très volatile. Fais tes recherches.*"
-                    envoyer_alerte_telegram(msg)
-                    cryptos_deja_annoncees.add(crypto['nom'])
-                    print(f"✅ Crypto signalée : {crypto['nom']}")
-
-        time.sleep(60)
+        time.sleep(300) # 5 minutes de pause
 
 # ==========================================
-# LANCEMENT DU BOT
+# LANCEMENT (Thread + Flask)
 # ==========================================
-# On lance le bot directement (plus de Thread pour éviter les crashs sur Render)
-print("🚀 BOT EN COURS DE DEMARRAGE...")
-boucle_bot()
+# On lance la boucle du bot en arrière-plan
+threading.Thread(target=boucle_bot, daemon=True).start()
 
-# Ce code ne sera jamais atteint à cause de la boucle infinie au-dessus, 
-# mais on le garde pour Render qui exige un port HTTP
 if __name__ == "__main__":
+    # Flask prend le relais pour garder le serveur en vie
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
