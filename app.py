@@ -4,23 +4,12 @@ import urllib.parse
 import json
 import time
 import ssl
-import threading
-from flask import Flask
 
 # ==========================================
 # 🔑 CONFIGURATION TELEGRAM
 # ==========================================
 TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
 TELEGRAM_CHAT_ID = "617879156"
-
-# On affiche un message IMMÉDIATEMENT au démarrage du fichier
-print("🚀 FICHIER APP.PY CHARGÉ - Démarrage de Flask...")
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "Bot en cours d'exécution !"
 
 # ==========================================
 # PARTIE 1 : LES AGENTS D'ANALYSE (4H)
@@ -83,7 +72,6 @@ def agent_smart_money(prices):
     plus_haut = max(prices[-96:])
     plus_bas = min(prices[-96:])
     fib_618 = plus_haut - ((plus_haut - plus_bas) * 0.618)
-    
     if (fib_618 * 0.995 <= prix_actuel <= fib_618 * 1.005) and prix_actuel < sma_20:
         return 1
     if prix_actuel <= bb_inferieure * 0.998:
@@ -101,7 +89,6 @@ def agent_conseil(prices, buys, sells):
     sma_50 = sum(prices[-50:]) / 50
     tendance_haussiere = prix_actuel > sma_50
     tendance_baissiere = prix_actuel < sma_50
-    
     if buys >= 5 and tendance_haussiere:
         return "🟢 **ACHAT FORT**"
     if sells >= 5:
@@ -144,24 +131,19 @@ def envoyer_alerte_telegram(message):
 
 def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
-    votes = [
-        agent_trend(prix), agent_rsi(prix), agent_breakout(prix), 
-        agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)
-    ]
+    votes = [agent_trend(prix), agent_rsi(prix), agent_breakout(prix), agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)]
     buys = votes.count(1)
     sells = votes.count(-1)
     conseil_final = agent_conseil(prix, buys, sells)
-    return {
-        "nom": nom, "prix": prix[-1], "buys": buys, "sells": sells, "conseil": conseil_final
-    }
+    return {"nom": nom, "prix": prix[-1], "buys": buys, "sells": sells, "conseil": conseil_final}
 
 # ==========================================
-# PARTIE 5 : BOUCLE PRINCIPALE (Dans un Thread)
+# PARTIE 5 : BOUCLE PRINCIPALE
 # ==========================================
 def boucle_bot():
     print("🌍 Bot ULTIME (4H) démarré. En attente de signaux forts...")
     envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Je te préviendrai pour les ACHATS et VENTES FORTS.")
-
+    
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
         "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
@@ -200,7 +182,7 @@ def boucle_bot():
                         titre = "🚀🚀 *SIGNAL D'ACHAT FORT (4H)* 🚀🚀"
                     else:
                         titre = "🩸🩸 *SIGNAL DE VENTE FORTE (4H)* 🩸🩸"
-
+                    
                     msg_alerte = (
                         f"{titre}\n\n"
                         f"{emoji} Actif : *{nom}*\n"
@@ -211,16 +193,11 @@ def boucle_bot():
                     derniers_signaux_forts[nom] = "DEJA_ENVOYE"
             else:
                 derniers_signaux_forts[nom] = ""
-
-        time.sleep(300) # 5 minutes de pause
+        
+        time.sleep(300)
 
 # ==========================================
-# LANCEMENT (Thread + Flask)
+# LANCEMENT
 # ==========================================
-# On lance la boucle du bot en arrière-plan
-threading.Thread(target=boucle_bot, daemon=True).start()
-
 if __name__ == "__main__":
-    # Flask prend le relais pour garder le serveur en vie
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    boucle_bot()
