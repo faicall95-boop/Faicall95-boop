@@ -116,9 +116,9 @@ def agent_conseil(prices, buys, sells):
 # PARTIE 3 : RÉCUPÉRATION DES PRIX
 # ==========================================
 def recuperer_prix_yahoo(symbole):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=15m&range=5d"
+    
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    try:
+    try:url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=4h&range=1mo"
         context = ssl._create_unverified_context()
         req = urllib.request.Request(url, headers=headers)
         requete = urllib.request.urlopen(req, timeout=10, context=context)
@@ -196,8 +196,7 @@ def analyser_marche(nom, prix):
 # PARTIE 5 : BOUCLE PRINCIPALE
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME démarré. Signaux Forts + Scanner < 0.02$...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Je te préviendrai pour les ACHATS/VENTES FORTS sur les indices/cryptos majeures, et je scannerai les cryptos sous les 2 centimes.")
+    print("🌍 Bot ULTIME démarré. Signaux Forts + Scanner < envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Analyse en 4 Heures. Je te préviendrai pour les ACHATS/VENTES FORTS sur les indices/cryptos majeures , et je scannerai les cryptos sous les 2 centimes.")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
