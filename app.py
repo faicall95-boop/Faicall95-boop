@@ -4,13 +4,15 @@ import urllib.parse
 import json
 import time
 import ssl
+import threading
 from flask import Flask
 
 # ==========================================
 # 🔑 CONFIGURATION TELEGRAM
 # ==========================================
-TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
-TELEGRAM_CHAT_ID = "617879156"
+# ⚠️ REMPLACE CES VALEURS PAR LES TIENNES
+TELEGRAM_TOKEN = "TON_TOKEN_ICI" 
+TELEGRAM_CHAT_ID = "TON_CHAT_ID_ICI"
 
 app = Flask(__name__)
 
@@ -79,6 +81,7 @@ def agent_smart_money(prices):
     plus_haut = max(prices[-96:])
     plus_bas = min(prices[-96:])
     fib_618 = plus_haut - ((plus_haut - plus_bas) * 0.618)
+    
     if (fib_618 * 0.995 <= prix_actuel <= fib_618 * 1.005) and prix_actuel < sma_20:
         return 1
     if prix_actuel <= bb_inferieure * 0.998:
@@ -96,9 +99,13 @@ def agent_conseil(prices, buys, sells):
     sma_50 = sum(prices[-50:]) / 50
     tendance_haussiere = prix_actuel > sma_50
     tendance_baissiere = prix_actuel < sma_50
-    if buys >= 5 and tendance_haussiere: return "🟢 **ACHAT FORT**"
-    if sells >= 5: return "🔴 **VENTE FORTE**"
-    if sells >= 5 and tendance_baissiere: return "🔴 **VENTE FORTE CONFIRMÉE**"
+    
+    if buys >= 5 and tendance_haussiere:
+        return "🟢 **ACHAT FORT**"
+    if sells >= 5:
+        return "🔴 **VENTE FORTE**"
+    if sells >= 5 and tendance_baissiere:
+        return "🔴 **VENTE FORTE CONFIRMÉE**"
     return "⚪ ATTENDRE"
 
 # ==========================================
@@ -115,7 +122,8 @@ def recuperer_prix_yahoo(symbole):
         resultat = donnees['chart']['result'][0]
         prix = resultat['indicators']['quote'][0]['close']
         return [p for p in prix if p is not None]
-    except Exception: return []
+    except Exception as e:
+        return []
 
 # ==========================================
 # PARTIE 4 : ENVOI TELEGRAM & LOGIQUE
@@ -123,69 +131,100 @@ def recuperer_prix_yahoo(symbole):
 def envoyer_alerte_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     data = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    data_encode = urllib.parse.urlencode(data).encode('utf-8')
     try:
         context = ssl._create_unverified_context()
-        req = urllib.request.Request(url, data=urllib.parse.urlencode(data).encode('utf-8'))
+        req = urllib.request.Request(url, data=data_encode)
         urllib.request.urlopen(req, timeout=10, context=context)
         print("✅ Message Telegram envoyé")
-    except Exception as e: print(f"❌ Erreur Telegram : {e}")
+    except Exception as e:
+        print(f"❌ Erreur Telegram : {e}")
 
 def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
-    votes = [agent_trend(prix), agent_rsi(prix), agent_breakout(prix), agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)]
-    return {"nom": nom, "prix": prix[-1], "buys": votes.count(1), "sells": votes.count(-1), "conseil": agent_conseil(prix, votes.count(1), votes.count(-1))}
+    votes = [
+        agent_trend(prix), agent_rsi(prix), agent_breakout(prix), 
+        agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)
+    ]
+    buys = votes.count(1)
+    sells = votes.count(-1)
+    conseil_final = agent_conseil(prix, buys, sells)
+    return {
+        "nom": nom, "prix": prix[-1], "buys": buys, "sells": sells, "conseil": conseil_final
+    }
 
 # ==========================================
-# PARTIE 5 : FONCTION D'ANALYSE UNIQUE (Sans boucle infinie)
+# PARTIE 5 : LA BOUCLE DU BOT
 # ==========================================
-def analyser_tout():
-    print("🌍 Analyse unique démarrée...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME (Mode Tâche Planifiée)* : Je vérifie les signaux forts.")
+def boucle_bot():
+    print("🌍 Bot ULTIME (4H) démarré. En attente de signaux forts...")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Analyse des indices, cryptos et Forex en cours...")
 
-    res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
-    res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
-    res_sol = analyser_marche("SOL", recuperer_prix_yahoo("SOL-USD"))
-    res_gold = analyser_marche("GOLD", recuperer_prix_yahoo("GC=F"))
-    res_nasdaq = analyser_marche("NASDAQ", recuperer_prix_yahoo("NQ=F"))
-    res_fr40 = analyser_marche("FR40", recuperer_prix_yahoo("^FCHI"))
-    res_de40 = analyser_marche("DE40", recuperer_prix_yahoo("^GDAXI"))
-    res_dj = analyser_marche("DJ", recuperer_prix_yahoo("^DJI"))
-    res_eurusd = analyser_marche("EURUSD", recuperer_prix_yahoo("EURUSD=X"))
-    res_gbpusd = analyser_marche("GBPUSD", recuperer_prix_yahoo("GBPUSD=X"))
-    res_usdjpy = analyser_marche("USDJPY", recuperer_prix_yahoo("USDJPY=X"))
-    res_usdchf = analyser_marche("USDCHF", recuperer_prix_yahoo("USDCHF=X"))
+    derniers_signaux_forts = {
+        "BTC": "", "ETH": "", "SOL": "",
+        "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
+        "EURUSD": "", "GBPUSD": "", "USDJPY": "", "USDCHF": ""
+    }
     
-    resultats = [r for r in [res_btc, res_eth, res_sol, res_gold, res_nasdaq, res_fr40, res_de40, res_dj, res_eurusd, res_gbpusd, res_usdjpy, res_usdchf] if r is not None]
-    
-    for r in resultats:
-        nom = r["nom"]
-        if "ACHAT FORT" in r["conseil"] or "VENTE FORTE" in r["conseil"]:
-            emoji = "₿" if nom == "BTC" else "🪙" if nom in ["ETH", "SOL"] else "🥇" if nom == "GOLD" else "💱" if "USD" in nom else "📈"
-            titre = "🚀🚀 *SIGNAL D'ACHAT FORT (4H)* 🚀🚀" if "ACHAT" in r["conseil"] else "🩸🩸 *SIGNAL DE VENTE FORTE (4H)* 🩸🩸"
-            msg = f"{titre}\n\n{emoji} Actif : *{nom}*\n💰 Prix : `{r['prix']:.4f} $`\n📊 Consensus : Achats {r['buys']}/6 | Ventes {r['sells']}/6\n"
-            envoyer_alerte_telegram(msg)
-    
-    print("✅ Analyse terminée.")
+    while True:
+        print(f"\n--- Analyse 4H {time.strftime('%H:%M:%S')} ---")
+        
+        res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
+        res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
+        res_sol = analyser_marche("SOL", recuperer_prix_yahoo("SOL-USD"))
+        res_gold = analyser_marche("GOLD", recuperer_prix_yahoo("GC=F"))
+        res_nasdaq = analyser_marche("NASDAQ", recuperer_prix_yahoo("NQ=F"))
+        res_fr40 = analyser_marche("FR40", recuperer_prix_yahoo("^FCHI"))
+        res_de40 = analyser_marche("DE40", recuperer_prix_yahoo("^GDAXI"))
+        res_dj = analyser_marche("DJ", recuperer_prix_yahoo("^DJI"))
+        res_eurusd = analyser_marche("EURUSD", recuperer_prix_yahoo("EURUSD=X"))
+        res_gbpusd = analyser_marche("GBPUSD", recuperer_prix_yahoo("GBPUSD=X"))
+        res_usdjpy = analyser_marche("USDJPY", recuperer_prix_yahoo("USDJPY=X"))
+        res_usdchf = analyser_marche("USDCHF", recuperer_prix_yahoo("USDCHF=X"))
+        
+        resultats = [r for r in [res_btc, res_eth, res_sol, res_gold, res_nasdaq, res_fr40, res_de40, res_dj, res_eurusd, res_gbpusd, res_usdjpy, res_usdchf] if r is not None]
+        
+        for r in resultats:
+            nom = r["nom"]
+            if "ACHAT FORT" in r["conseil"] or "VENTE FORTE" in r["conseil"]:
+                if derniers_signaux_forts.get(nom) != "DEJA_ENVOYE":
+                    
+                    if nom == "BTC": emoji = "₿"
+                    elif nom in ["ETH", "SOL"]: emoji = "🪙"
+                    elif nom == "GOLD": emoji = "🥇"
+                    elif nom in ["EURUSD", "GBPUSD", "USDJPY", "USDCHF"]: emoji = "💱"
+                    else: emoji = "📈"
+                    
+                    if "ACHAT" in r["conseil"]:
+                        titre = "🚀🚀 *SIGNAL D'ACHAT FORT (4H)* 🚀🚀"
+                        action = "Opportunité d'entrée. Place ton Stop-Loss !"
+                    else:
+                        titre = "🩸🩸 *SIGNAL DE VENTE FORTE (4H)* 🩸🩸"
+                        action = "Le marché se retourne ! Vends ou sécurise tes gains."
+
+                    msg_alerte = (
+                        f"{titre}\n\n"
+                        f"{emoji} Actif : *{nom}*\n"
+                        f"💰 Prix : `{r['prix']:.4f} $`\n"
+                        f"📊 Consensus : Achats {r['buys']}/6 | Ventes {r['sells']}/6\n\n"
+                        f"⚠️ *Action* : {action}"
+                    )
+                    envoyer_alerte_telegram(msg_alerte)
+                    derniers_signaux_forts[nom] = "DEJA_ENVOYE"
+            else:
+                derniers_signaux_forts[nom] = ""
+
+        print("✅ Analyse terminée. Attente de 4 heures...")
+        time.sleep(14400) # Pause de 4 heures (14400 secondes)
 
 # ==========================================
-# LANCEMENT
+# LANCEMENT (LA PARTIE CRUCIALE)
 # ==========================================
-# On lance l'analyse UNE SEULE FOIS au démarrage
-analyser_tout()
-
 if __name__ == "__main__":
-    # Puis Flask démarre pour garder le serveur en vie (et répondre à UptimeRobot)
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-    # ==========================================
-# LANCEMENT
-# ==========================================
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-
-    # On lance l'analyse EN ARRIÈRE-PLAN (après que Flask ait démarré)
-    from threading import Thread
-    Thread(target=analyser_tout, daemon=True).start()
-
-    # Puis on démarre Flask sur le bon port
+    
+    # 1. On lance la boucle du bot en arrière-plan
+    threading.Thread(target=boucle_bot, daemon=True).start()
+    
+    # 2. On lance Flask pour garder Render éveillé
     app.run(host="0.0.0.0", port=port)
