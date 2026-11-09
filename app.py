@@ -4,7 +4,6 @@ import urllib.parse
 import json
 import time
 import ssl
-import threading
 from flask import Flask
 
 # ==========================================
@@ -73,13 +72,11 @@ def agent_support_resistance(prices):
 def agent_smart_money(prices):
     if len(prices) < 96: return 0
     prix_actuel = prices[-1]
-    
     sma_20 = sum(prices[-20:]) / 20
     variance = sum((p - sma_20) ** 2 for p in prices[-20:]) / 20
     ecart_type = variance ** 0.5
     bb_superieure = sma_20 + (2 * ecart_type)
     bb_inferieure = sma_20 - (2 * ecart_type)
-    
     plus_haut = max(prices[-96:])
     plus_bas = min(prices[-96:])
     fib_618 = plus_haut - ((plus_haut - plus_bas) * 0.618)
@@ -97,7 +94,6 @@ def agent_smart_money(prices):
 # ==========================================
 def agent_conseil(prices, buys, sells):
     if len(prices) < 96: return "⏳ Données insuffisantes"
-    
     prix_actuel = prices[-1]
     sma_50 = sum(prices[-50:]) / 50
     tendance_haussiere = prix_actuel > sma_50
@@ -109,7 +105,6 @@ def agent_conseil(prices, buys, sells):
         return "🔴 **VENTE FORTE**"
     if sells >= 5 and tendance_baissiere:
         return "🔴 **VENTE FORTE CONFIRMÉE**"
-        
     return "⚪ ATTENDRE"
 
 # ==========================================
@@ -129,6 +124,27 @@ def recuperer_prix_yahoo(symbole):
     except Exception as e:
         return []
 
+# --- SCANNER CRYPTO < 2 CENTIMES ---
+def scanner_cryptos_pas_cheres():
+    cryptos_cibles = {
+        "VANRY": "VANRY-USD",
+        "CSPR": "CSPR-USD",
+        "CORE": "CORE-USD",
+        "ACT": "ACT-USD"
+    }
+    trouvailles = []
+    for nom, symbole in cryptos_cibles.items():
+        prix = recuperer_prix_yahoo(symbole)
+        if prix and len(prix) > 0:
+            dernier_prix = prix[-1]
+            if dernier_prix < 0.02:
+                trouvailles.append({
+                    'nom': nom,
+                    'prix': f"{dernier_prix:.6f}",
+                    'url': f"https://finance.yahoo.com/quote/{symbole}"
+                })
+    return trouvailles
+
 # ==========================================
 # PARTIE 4 : ENVOI TELEGRAM & LOGIQUE
 # ==========================================
@@ -146,48 +162,43 @@ def envoyer_alerte_telegram(message):
 
 def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
-    
     votes = [
         agent_trend(prix), agent_rsi(prix), agent_breakout(prix), 
         agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)
     ]
-    
     buys = votes.count(1)
     sells = votes.count(-1)
     conseil_final = agent_conseil(prix, buys, sells)
-    
     return {
         "nom": nom, "prix": prix[-1], "buys": buys, "sells": sells, "conseil": conseil_final
     }
 
 # ==========================================
-# PARTIE 5 : BOUCLE PRINCIPALE (MARCHES + FOREX)
+# PARTIE 5 : BOUCLE PRINCIPALE
 # ==========================================
 def boucle_bot():
     print("🌍 Bot ULTIME (4H) démarré. En attente de signaux forts...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Je te préviendrai uniquement pour les ACHATS FORTS et VENTES FORTES sur les indices, les cryptos majeures et le Forex.")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Je te préviendrai uniquement pour les ACHATS FORTS et VENTES FORTES.")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
         "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
         "EURUSD": "", "GBPUSD": "", "USDJPY": "", "USDCHF": ""
     }
+    cryptos_deja_annoncees = set()
+    compteur_minutes = 0
     
     while True:
         print(f"\n--- Analyse 4H {time.strftime('%H:%M:%S')} ---")
         
-        # 1. ANALYSE DES MARCHES MAJEURS
         res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
         res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
         res_sol = analyser_marche("SOL", recuperer_prix_yahoo("SOL-USD"))
-        
         res_gold = analyser_marche("GOLD", recuperer_prix_yahoo("GC=F"))
         res_nasdaq = analyser_marche("NASDAQ", recuperer_prix_yahoo("NQ=F"))
         res_fr40 = analyser_marche("FR40", recuperer_prix_yahoo("^FCHI"))
         res_de40 = analyser_marche("DE40", recuperer_prix_yahoo("^GDAXI"))
         res_dj = analyser_marche("DJ", recuperer_prix_yahoo("^DJI"))
-        
-        # 2. ANALYSE DU FOREX
         res_eurusd = analyser_marche("EURUSD", recuperer_prix_yahoo("EURUSD=X"))
         res_gbpusd = analyser_marche("GBPUSD", recuperer_prix_yahoo("GBPUSD=X"))
         res_usdjpy = analyser_marche("USDJPY", recuperer_prix_yahoo("USDJPY=X"))
@@ -197,11 +208,8 @@ def boucle_bot():
         
         for r in resultats:
             nom = r["nom"]
-            
             if "ACHAT FORT" in r["conseil"] or "VENTE FORTE" in r["conseil"]:
-                
                 if derniers_signaux_forts.get(nom) != "DEJA_ENVOYE":
-                    
                     if nom == "BTC": emoji = "₿"
                     elif nom in ["ETH", "SOL"]: emoji = "🪙"
                     elif nom == "GOLD": emoji = "🥇"
@@ -228,11 +236,32 @@ def boucle_bot():
             else:
                 derniers_signaux_forts[nom] = ""
 
-        # Pause de 5 minutes (car sur du 4H, le prix ne change pas toutes les minutes)
-        time.sleep(300)
+        compteur_minutes += 1
+        if compteur_minutes % 30 == 0:
+            print("🔎 Scan des cryptos à moins de 2 centimes...")
+            trouvailles = scanner_cryptos_pas_cheres()
+            for crypto in trouvailles:
+                if crypto['nom'] not in cryptos_deja_annoncees:
+                    msg = f"🪙 *Crypto à moins de 2 centimes repérée*\n\n"
+                    msg += f"🆔 *{crypto['nom']}*\n"
+                    msg += f"💰 Prix actuel : `{crypto['prix']} $`\n\n"
+                    msg += f"🔗 [Voir le graphique]({crypto['url']})\n"
+                    msg += f"⚠️ *Très volatile. Fais tes recherches.*"
+                    envoyer_alerte_telegram(msg)
+                    cryptos_deja_annoncees.add(crypto['nom'])
+                    print(f"✅ Crypto signalée : {crypto['nom']}")
 
-threading.Thread(target=boucle_bot, daemon=True).start()
+        time.sleep(60)
 
+# ==========================================
+# LANCEMENT DU BOT
+# ==========================================
+# On lance le bot directement (plus de Thread pour éviter les crashs sur Render)
+print("🚀 BOT EN COURS DE DEMARRAGE...")
+boucle_bot()
+
+# Ce code ne sera jamais atteint à cause de la boucle infinie au-dessus, 
+# mais on le garde pour Render qui exige un port HTTP
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
