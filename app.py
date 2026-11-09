@@ -177,3 +177,15 @@ if __name__ == "__main__":
     # Puis Flask démarre pour garder le serveur en vie (et répondre à UptimeRobot)
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+    # ==========================================
+# LANCEMENT
+# ==========================================
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+
+    # On lance l'analyse EN ARRIÈRE-PLAN (après que Flask ait démarré)
+    from threading import Thread
+    Thread(target=analyser_tout, daemon=True).start()
+
+    # Puis on démarre Flask sur le bon port
+    app.run(host="0.0.0.0", port=port)
