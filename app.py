@@ -21,7 +21,7 @@ def home():
     return "Bot en cours d'exécution !"
 
 # ==========================================
-# PARTIE 1 : LES AGENTS D'ANALYSE (15m)
+# PARTIE 1 : LES AGENTS D'ANALYSE (4H)
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -93,7 +93,7 @@ def agent_smart_money(prices):
     return 0
 
 # ==========================================
-# PARTIE 2 : L'AGENT DECISIONNEL (Conseils)
+# PARTIE 2 : L'AGENT DECISIONNEL
 # ==========================================
 def agent_conseil(prices, buys, sells):
     if len(prices) < 96: return "⏳ Données insuffisantes"
@@ -113,12 +113,12 @@ def agent_conseil(prices, buys, sells):
     return "⚪ ATTENDRE"
 
 # ==========================================
-# PARTIE 3 : RÉCUPÉRATION DES PRIX
+# PARTIE 3 : RÉCUPÉRATION DES PRIX (4H)
 # ==========================================
 def recuperer_prix_yahoo(symbole):
-    
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=4h&range=1mo"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    try:url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=4h&range=1mo"
+    try:
         context = ssl._create_unverified_context()
         req = urllib.request.Request(url, headers=headers)
         requete = urllib.request.urlopen(req, timeout=10, context=context)
@@ -128,30 +128,6 @@ def recuperer_prix_yahoo(symbole):
         return [p for p in prix if p is not None]
     except Exception as e:
         return []
-
-# --- LE NOUVEAU SCANNER CRYPTO < 2 CENTIMES ---
-def scanner_cryptos_pas_cheres():
-    # Liste de nos cryptos cibles (Symboles Yahoo Finance)
-    cryptos_cibles = {
-        "VANRY": "VANRY-USD",
-        "CSPR": "CSPR-USD",
-        "CORE": "CORE-USD",
-        "ACT": "ACT-USD" # Si ACT n'est pas sur Yahoo, il sera ignoré
-    }
-    
-    trouvailles = []
-    for nom, symbole in cryptos_cibles.items():
-        prix = recuperer_prix_yahoo(symbole)
-        if prix and len(prix) > 0:
-            dernier_prix = prix[-1]
-            # On vérifie si c'est sous les 2 centimes (0.02 $)
-            if dernier_prix < 0.02:
-                trouvailles.append({
-                    'nom': nom,
-                    'prix': f"{dernier_prix:.6f}",
-                    'url': f"https://finance.yahoo.com/quote/{symbole}"
-                })
-    return trouvailles
 
 # ==========================================
 # PARTIE 4 : ENVOI TELEGRAM & LOGIQUE
@@ -172,12 +148,8 @@ def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
     
     votes = [
-        agent_trend(prix), 
-        agent_rsi(prix), 
-        agent_breakout(prix), 
-        agent_macd(prix), 
-        agent_support_resistance(prix),
-        agent_smart_money(prix)
+        agent_trend(prix), agent_rsi(prix), agent_breakout(prix), 
+        agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)
     ]
     
     buys = votes.count(1)
@@ -185,32 +157,26 @@ def analyser_marche(nom, prix):
     conseil_final = agent_conseil(prix, buys, sells)
     
     return {
-        "nom": nom, 
-        "prix": prix[-1], 
-        "buys": buys, 
-        "sells": sells,
-        "conseil": conseil_final
+        "nom": nom, "prix": prix[-1], "buys": buys, "sells": sells, "conseil": conseil_final
     }
 
 # ==========================================
-# PARTIE 5 : BOUCLE PRINCIPALE
+# PARTIE 5 : BOUCLE PRINCIPALE (MARCHES + FOREX)
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME démarré. Signaux Forts + Scanner < envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* Analyse en 4 Heures. Je te préviendrai pour les ACHATS/VENTES FORTS sur les indices/cryptos majeures , et je scannerai les cryptos sous les 2 centimes.")
+    print("🌍 Bot ULTIME (4H) démarré. En attente de signaux forts...")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Je te préviendrai uniquement pour les ACHATS FORTS et VENTES FORTES sur les indices, les cryptos majeures et le Forex.")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
-        "GOLD": "", "NASDAQ": "", "FR40": "", 
-        "DE40": "", "DJ": ""
+        "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
+        "EURUSD": "", "GBPUSD": "", "USDJPY": "", "USDCHF": ""
     }
     
-    cryptos_deja_annoncees = set() # Pour ne pas répéter les alertes < 2 centimes
-    compteur_minutes = 0
-    
     while True:
-        print(f"\n--- Analyse {time.strftime('%H:%M:%S')} ---")
+        print(f"\n--- Analyse 4H {time.strftime('%H:%M:%S')} ---")
         
-        # 1. ANALYSE DES MARCHES MAJEURS (BTC, OR, INDICES...)
+        # 1. ANALYSE DES MARCHES MAJEURS
         res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
         res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
         res_sol = analyser_marche("SOL", recuperer_prix_yahoo("SOL-USD"))
@@ -221,12 +187,17 @@ def boucle_bot():
         res_de40 = analyser_marche("DE40", recuperer_prix_yahoo("^GDAXI"))
         res_dj = analyser_marche("DJ", recuperer_prix_yahoo("^DJI"))
         
-        resultats = [r for r in [res_btc, res_eth, res_sol, res_gold, res_nasdaq, res_fr40, res_de40, res_dj] if r is not None]
+        # 2. ANALYSE DU FOREX
+        res_eurusd = analyser_marche("EURUSD", recuperer_prix_yahoo("EURUSD=X"))
+        res_gbpusd = analyser_marche("GBPUSD", recuperer_prix_yahoo("GBPUSD=X"))
+        res_usdjpy = analyser_marche("USDJPY", recuperer_prix_yahoo("USDJPY=X"))
+        res_usdchf = analyser_marche("USDCHF", recuperer_prix_yahoo("USDCHF=X"))
+        
+        resultats = [r for r in [res_btc, res_eth, res_sol, res_gold, res_nasdaq, res_fr40, res_de40, res_dj, res_eurusd, res_gbpusd, res_usdjpy, res_usdchf] if r is not None]
         
         for r in resultats:
             nom = r["nom"]
             
-            # Filtre Achat/Vente Fort uniquement
             if "ACHAT FORT" in r["conseil"] or "VENTE FORTE" in r["conseil"]:
                 
                 if derniers_signaux_forts.get(nom) != "DEJA_ENVOYE":
@@ -234,19 +205,20 @@ def boucle_bot():
                     if nom == "BTC": emoji = "₿"
                     elif nom in ["ETH", "SOL"]: emoji = "🪙"
                     elif nom == "GOLD": emoji = "🥇"
+                    elif nom in ["EURUSD", "GBPUSD", "USDJPY", "USDCHF"]: emoji = "💱"
                     else: emoji = "📈"
                     
                     if "ACHAT" in r["conseil"]:
-                        titre = "🚀🚀 *SIGNAL D'ACHAT FORT* 🚀🚀"
+                        titre = "🚀🚀 *SIGNAL D'ACHAT FORT (4H)* 🚀🚀"
                         action = "Opportunité d'entrée. Place ton Stop-Loss !"
                     else:
-                        titre = "🩸🩸 *SIGNAL DE VENTE FORTE* 🩸🩸"
+                        titre = "🩸🩸 *SIGNAL DE VENTE FORTE (4H)* 🩸🩸"
                         action = "Le marché se retourne ! Vends ou sécurise tes gains."
 
                     msg_alerte = (
                         f"{titre}\n\n"
                         f"{emoji} Actif : *{nom}*\n"
-                        f"💰 Prix : `{r['prix']:.2f} $`\n"
+                        f"💰 Prix : `{r['prix']:.4f} $`\n"
                         f"📊 Consensus : Achats {r['buys']}/6 | Ventes {r['sells']}/6\n"
                         f"📈 Tendance : {'Haussière' if 'ACHAT' in r['conseil'] else 'Baissière'}\n\n"
                         f"⚠️ *Action* : {action}"
@@ -256,25 +228,8 @@ def boucle_bot():
             else:
                 derniers_signaux_forts[nom] = ""
 
-        # 2. SCANNER CRYPTOS < 2 CENTIMES (Toutes les 30 minutes pour éviter le spam)
-        compteur_minutes += 1
-        if compteur_minutes % 30 == 0:
-            print("🔎 Scan des cryptos à moins de 2 centimes...")
-            trouvailles = scanner_cryptos_pas_cheres()
-            
-            for crypto in trouvailles:
-                if crypto['nom'] not in cryptos_deja_annoncees:
-                    msg = f"🪙 *Crypto à moins de 2 centimes repérée*\n\n"
-                    msg += f"🆔 *{crypto['nom']}*\n"
-                    msg += f"💰 Prix actuel : `{crypto['prix']} $`\n\n"
-                    msg += f"🔗 [Voir le graphique sur Yahoo Finance]({crypto['url']})\n"
-                    msg += f"⚠️ *Attention : Très volatile. Fais tes propres recherches.*"
-                    
-                    envoyer_alerte_telegram(msg)
-                    cryptos_deja_annoncees.add(crypto['nom'])
-                    print(f"✅ Crypto signalée : {crypto['nom']}")
-
-        time.sleep(60)
+        # Pause de 5 minutes (car sur du 4H, le prix ne change pas toutes les minutes)
+        time.sleep(300)
 
 threading.Thread(target=boucle_bot, daemon=True).start()
 
