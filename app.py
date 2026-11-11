@@ -11,8 +11,8 @@ from flask import Flask
 # 🔑 CONFIGURATION TELEGRAM
 # ==========================================
 # ⚠️ REMPLACE CES VALEURS PAR LES TIENNES
-TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
-TELEGRAM_CHAT_ID = "617879156"
+TELEGRAM_TOKEN = "TON_TOKEN_ICI" 
+TELEGRAM_CHAT_ID = "TON_CHAT_ID_ICI"
 
 app = Flask(__name__)
 
@@ -21,7 +21,7 @@ def home():
     return "Bot en cours d'exécution !"
 
 # ==========================================
-# PARTIE 1 : LES AGENTS D'ANALYSE (4H) - 5 AGENTS
+# PARTIE 1 : LES AGENTS D'ANALYSE (4 AGENTS)
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -42,8 +42,6 @@ def agent_rsi(prices):
     if rsi > 70: return -1
     return 0
 
-# (L'agent_breakout a été supprimé ici)
-
 def agent_macd(prices):
     if len(prices) < 26: return 0
     def ema(data, n):
@@ -54,16 +52,6 @@ def agent_macd(prices):
         return e
     macd = ema(prices, 12) - ema(prices, 26)
     return 1 if macd > 0 else -1
-
-def agent_support_resistance(prices):
-    if len(prices) < 50: return 0
-    recent_prices = prices[-50:]
-    plus_haut = max(recent_prices)
-    plus_bas = min(recent_prices)
-    prix_actuel = prices[-1]
-    if prix_actuel <= plus_bas * 1.01: return 1
-    elif prix_actuel >= plus_haut * 0.99: return -1
-    return 0
 
 def agent_smart_money(prices):
     if len(prices) < 96: return 0
@@ -86,7 +74,7 @@ def agent_smart_money(prices):
     return 0
 
 # ==========================================
-# PARTIE 2 : L'AGENT DECISIONNEL (Règle du 4/5)
+# PARTIE 2 : L'AGENT DECISIONNEL (Règle du 3/4)
 # ==========================================
 def agent_conseil(prices, buys, sells):
     if len(prices) < 96: return "⏳ Données insuffisantes"
@@ -95,12 +83,12 @@ def agent_conseil(prices, buys, sells):
     tendance_haussiere = prix_actuel > sma_50
     tendance_baissiere = prix_actuel < sma_50
     
-    # ON EXIGE MAINTENANT 4 VOTES SUR 5
-    if buys >= 4 and tendance_haussiere:
+    # ON EXIGE MAINTENANT 3 VOTES SUR 4
+    if buys >= 3 and tendance_haussiere:
         return "🟢 **ACHAT FORT**"
-    if sells >= 4:
+    if sells >= 3:
         return "🔴 **VENTE FORTE**"
-    if sells >= 4 and tendance_baissiere:
+    if sells >= 3 and tendance_baissiere:
         return "🔴 **VENTE FORTE CONFIRMÉE**"
     return "⚪ ATTENDRE"
 
@@ -139,12 +127,11 @@ def envoyer_alerte_telegram(message):
 def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
     
-    # On ne compte plus que 5 agents
+    # On ne compte plus que 4 agents
     votes = [
         agent_trend(prix), 
         agent_rsi(prix), 
         agent_macd(prix), 
-        agent_support_resistance(prix), 
         agent_smart_money(prix)
     ]
     
@@ -160,8 +147,8 @@ def analyser_marche(nom, prix):
 # PARTIE 5 : LA BOUCLE DU BOT
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME (4H) démarré avec 5 agents (Règle 4/5). En attente de signaux...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* J'analyse les marchés avec 5 agents (seuil 4/5).")
+    print("🌍 Bot ULTIME (4H) démarré avec 4 agents (Règle 3/4). En attente de signaux...")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* J'analyse les marchés avec 4 agents (seuil 3/4).")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
@@ -209,7 +196,7 @@ def boucle_bot():
                         f"{titre}\n\n"
                         f"{emoji} Actif : *{nom}*\n"
                         f"💰 Prix : `{r['prix']:.4f} $`\n"
-                        f"📊 Consensus : Achats {r['buys']}/5 | Ventes {r['sells']}/5\n\n"
+                        f"📊 Consensus : Achats {r['buys']}/4 | Ventes {r['sells']}/4\n\n"
                         f"⚠️ *Action* : {action}"
                     )
                     envoyer_alerte_telegram(msg_alerte)
@@ -226,8 +213,6 @@ def boucle_bot():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     
-    # On lance la boucle du bot en arrière-plan
     threading.Thread(target=boucle_bot, daemon=True).start()
     
-    # On lance Flask pour garder Render éveillé
     app.run(host="0.0.0.0", port=port)
