@@ -11,8 +11,8 @@ from flask import Flask
 # 🔑 CONFIGURATION TELEGRAM
 # ==========================================
 # ⚠️ REMPLACE CES VALEURS PAR LES TIENNES
-TELEGRAM_TOKEN = "TON_TOKEN_ICI" 
-TELEGRAM_CHAT_ID = "TON_CHAT_ID_ICI"
+TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
+TELEGRAM_CHAT_ID = "617879156"
 
 app = Flask(__name__)
 
