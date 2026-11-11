@@ -21,7 +21,7 @@ def home():
     return "Bot en cours d'exécution !"
 
 # ==========================================
-# PARTIE 1 : LES AGENTS D'ANALYSE (4H)
+# PARTIE 1 : LES AGENTS D'ANALYSE (4H) - 5 AGENTS
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -42,12 +42,7 @@ def agent_rsi(prices):
     if rsi > 70: return -1
     return 0
 
-def agent_breakout(prices):
-    if len(prices) < 21: return 0
-    window = prices[-21:-1]
-    if prices[-1] > max(window): return 1
-    if prices[-1] < min(window): return -1
-    return 0
+# (L'agent_breakout a été supprimé ici)
 
 def agent_macd(prices):
     if len(prices) < 26: return 0
@@ -91,7 +86,7 @@ def agent_smart_money(prices):
     return 0
 
 # ==========================================
-# PARTIE 2 : L'AGENT DECISIONNEL
+# PARTIE 2 : L'AGENT DECISIONNEL (Règle du 4/5)
 # ==========================================
 def agent_conseil(prices, buys, sells):
     if len(prices) < 96: return "⏳ Données insuffisantes"
@@ -100,11 +95,12 @@ def agent_conseil(prices, buys, sells):
     tendance_haussiere = prix_actuel > sma_50
     tendance_baissiere = prix_actuel < sma_50
     
-    if buys >= 5 and tendance_haussiere:
+    # ON EXIGE MAINTENANT 4 VOTES SUR 5
+    if buys >= 4 and tendance_haussiere:
         return "🟢 **ACHAT FORT**"
-    if sells >= 5:
+    if sells >= 4:
         return "🔴 **VENTE FORTE**"
-    if sells >= 5 and tendance_baissiere:
+    if sells >= 4 and tendance_baissiere:
         return "🔴 **VENTE FORTE CONFIRMÉE**"
     return "⚪ ATTENDRE"
 
@@ -142,13 +138,20 @@ def envoyer_alerte_telegram(message):
 
 def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
+    
+    # On ne compte plus que 5 agents
     votes = [
-        agent_trend(prix), agent_rsi(prix), agent_breakout(prix), 
-        agent_macd(prix), agent_support_resistance(prix), agent_smart_money(prix)
+        agent_trend(prix), 
+        agent_rsi(prix), 
+        agent_macd(prix), 
+        agent_support_resistance(prix), 
+        agent_smart_money(prix)
     ]
+    
     buys = votes.count(1)
     sells = votes.count(-1)
     conseil_final = agent_conseil(prix, buys, sells)
+    
     return {
         "nom": nom, "prix": prix[-1], "buys": buys, "sells": sells, "conseil": conseil_final
     }
@@ -157,8 +160,8 @@ def analyser_marche(nom, prix):
 # PARTIE 5 : LA BOUCLE DU BOT
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME (4H) démarré. En attente de signaux forts...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 4 Heures) !* Analyse des indices, cryptos et Forex en cours...")
+    print("🌍 Bot ULTIME (4H) démarré avec 5 agents (Règle 4/5). En attente de signaux...")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* J'analyse les marchés avec 5 agents (seuil 4/5).")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
@@ -206,7 +209,7 @@ def boucle_bot():
                         f"{titre}\n\n"
                         f"{emoji} Actif : *{nom}*\n"
                         f"💰 Prix : `{r['prix']:.4f} $`\n"
-                        f"📊 Consensus : Achats {r['buys']}/6 | Ventes {r['sells']}/6\n\n"
+                        f"📊 Consensus : Achats {r['buys']}/5 | Ventes {r['sells']}/5\n\n"
                         f"⚠️ *Action* : {action}"
                     )
                     envoyer_alerte_telegram(msg_alerte)
@@ -215,16 +218,16 @@ def boucle_bot():
                 derniers_signaux_forts[nom] = ""
 
         print("✅ Analyse terminée. Attente de 4 heures...")
-        time.sleep(14400) # Pause de 4 heures (14400 secondes)
+        time.sleep(14400) # Pause de 4 heures
 
 # ==========================================
-# LANCEMENT (LA PARTIE CRUCIALE)
+# LANCEMENT
 # ==========================================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     
-    # 1. On lance la boucle du bot en arrière-plan
+    # On lance la boucle du bot en arrière-plan
     threading.Thread(target=boucle_bot, daemon=True).start()
     
-    # 2. On lance Flask pour garder Render éveillé
+    # On lance Flask pour garder Render éveillé
     app.run(host="0.0.0.0", port=port)
