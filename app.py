@@ -21,7 +21,7 @@ def home():
     return "Bot en cours d'exécution !"
 
 # ==========================================
-# PARTIE 1 : LES AGENTS D'ANALYSE (4 AGENTS)
+# PARTIE 1 : LES AGENTS D'ANALYSE (1H) - 4 AGENTS
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -83,7 +83,7 @@ def agent_conseil(prices, buys, sells):
     tendance_haussiere = prix_actuel > sma_50
     tendance_baissiere = prix_actuel < sma_50
     
-    # ON EXIGE MAINTENANT 3 VOTES SUR 4
+    # ON EXIGE 3 VOTES SUR 4
     if buys >= 3 and tendance_haussiere:
         return "🟢 **ACHAT FORT**"
     if sells >= 3:
@@ -93,10 +93,11 @@ def agent_conseil(prices, buys, sells):
     return "⚪ ATTENDRE"
 
 # ==========================================
-# PARTIE 3 : RÉCUPÉRATION DES PRIX (4H)
+# PARTIE 3 : RÉCUPÉRATION DES PRIX (1H)
 # ==========================================
 def recuperer_prix_yahoo(symbole):
-    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=4h&range=1mo"
+    # PASSAGE EN 1 HEURE ICI
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=1h&range=1mo"
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
     try:
         context = ssl._create_unverified_context()
@@ -127,7 +128,6 @@ def envoyer_alerte_telegram(message):
 def analyser_marche(nom, prix):
     if not prix or len(prix) < 96: return None
     
-    # On ne compte plus que 4 agents
     votes = [
         agent_trend(prix), 
         agent_rsi(prix), 
@@ -147,8 +147,8 @@ def analyser_marche(nom, prix):
 # PARTIE 5 : LA BOUCLE DU BOT
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME (4H) démarré avec 4 agents (Règle 3/4). En attente de signaux...")
-    envoyer_alerte_telegram("🌍 *Bot ULTIME activé !* J'analyse les marchés avec 4 agents (seuil 3/4).")
+    print("🌍 Bot ULTIME (1H) démarré avec 4 agents (Règle 3/4). En attente de signaux...")
+    envoyer_alerte_telegram("🌍 *Bot ULTIME activé (Mode 1 Heure) !* Je surveille les marchés de plus près.")
 
     derniers_signaux_forts = {
         "BTC": "", "ETH": "", "SOL": "",
@@ -157,7 +157,7 @@ def boucle_bot():
     }
     
     while True:
-        print(f"\n--- Analyse 4H {time.strftime('%H:%M:%S')} ---")
+        print(f"\n--- Analyse 1H {time.strftime('%H:%M:%S')} ---")
         
         res_btc = analyser_marche("BTC", recuperer_prix_yahoo("BTC-USD"))
         res_eth = analyser_marche("ETH", recuperer_prix_yahoo("ETH-USD"))
@@ -186,10 +186,10 @@ def boucle_bot():
                     else: emoji = "📈"
                     
                     if "ACHAT" in r["conseil"]:
-                        titre = "🚀🚀 *SIGNAL D'ACHAT FORT (4H)* 🚀🚀"
+                        titre = "🚀🚀 *SIGNAL D'ACHAT FORT (1H)* 🚀🚀"
                         action = "Opportunité d'entrée. Place ton Stop-Loss !"
                     else:
-                        titre = "🩸🩸 *SIGNAL DE VENTE FORTE (4H)* 🩸🩸"
+                        titre = "🩸🩸 *SIGNAL DE VENTE FORTE (1H)* 🩸🩸"
                         action = "Le marché se retourne ! Vends ou sécurise tes gains."
 
                     msg_alerte = (
@@ -204,8 +204,8 @@ def boucle_bot():
             else:
                 derniers_signaux_forts[nom] = ""
 
-        print("✅ Analyse terminée. Attente de 4 heures...")
-        time.sleep(14400) # Pause de 4 heures
+        print("✅ Analyse terminée. Attente de 1 heure...")
+        time.sleep(3600) # Pause de 1 heure (3600 secondes)
 
 # ==========================================
 # LANCEMENT
