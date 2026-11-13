@@ -11,12 +11,11 @@ from flask import Flask
 # 🔑 CONFIGURATION TELEGRAM & CAPITAL
 # ==========================================
 # ⚠️ REMPLACE CES VALEURS PAR LES TIENNES
-TELEGRAM_TOKEN = "8800937654:AAHlICl2JWAPQf5glyB9W6kSXqywNyA4QuE" 
-TELEGRAM_CHAT_ID = "617879156"
+TELEGRAM_TOKEN = "TON_TOKEN_ICI" 
+TELEGRAM_CHAT_ID = "TON_CHAT_ID_ICI"
 
-# 💰 CONFIGURATION DU TRADING
-CAPITAL_TOTAL = 10000.0  # Ton capital de départ
-RISQUE_POURCENT = 1.0    # Tu risques 1% par trade (donc 100$ max)
+CAPITAL_TOTAL = 10000.0  # Ton capital
+RISQUE_POURCENT = 1.0    # Risque de 1% (100$)
 
 app = Flask(__name__)
 
@@ -25,7 +24,7 @@ def home():
     return "Bot en cours d'exécution !"
 
 # ==========================================
-# PARTIE 1 : LES AGENTS D'ANALYSE (1H) - 4 AGENTS
+# PARTIE 1 : LES AGENTS D'ANALYSE (1H)
 # ==========================================
 def agent_trend(prices):
     if len(prices) < 20: return 0
@@ -96,7 +95,7 @@ def agent_conseil(prices, buys, sells):
     return "⚪ ATTENDRE"
 
 # ==========================================
-# PARTIE 3 : RÉCUPÉRATION DES PRIX (1H) & ATR
+# PARTIE 3 : RÉCUPÉRATION DES DONNÉES (1H)
 # ==========================================
 def recuperer_donnees_yahoo(symbole):
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbole}?interval=1h&range=1mo"
@@ -111,17 +110,15 @@ def recuperer_donnees_yahoo(symbole):
         prix_haut = resultat['indicators']['quote'][0]['high']
         prix_bas = resultat['indicators']['quote'][0]['low']
         
-        # On nettoie les données vides
         closes = [p for p in prix_cloture if p is not None]
         highs = [p for p in prix_haut if p is not None]
         lows = [p for p in prix_bas if p is not None]
         
         return closes, highs, lows
-    except Exception as e:
+    except Exception:
         return [], [], []
 
 def calculer_atr(highs, lows, closes, periode=14):
-    """Calcule l'Average True Range (Volatilité)"""
     if len(closes) < periode + 1: return 0
     tr_list = []
     for i in range(-periode, 0):
@@ -130,41 +127,45 @@ def calculer_atr(highs, lows, closes, periode=14):
     return sum(tr_list) / periode
 
 # ==========================================
-# PARTIE 4 : CALCULATEUR DE LOTS (SL via ATR)
+# PARTIE 4 : CALCULATEUR DE POSITION (Version Pro)
 # ==========================================
-def calculer_taille_position(nom_actif, prix_entree, atr):
-    """
-    Calcule la taille de la position en fonction du risque (100$),
-    et d'un Stop-Loss placé à 2 fois l'ATR.
-    """
-    risque_max_usd = CAPITAL_TOTAL * (RISQUE_POURCENT / 100)
-    distance_sl = atr * 2 # Stop Loss à 2x l'ATR
+def calculer_taille_position(nom_actif, prix_entree, atr, type_conseil):
+    risque_max_usd = CAPITAL_TOTAL * (RISQUE_POURCENT / 100) # 100$
+    distance_sl = atr * 2 
     
     if distance_sl == 0:
         return "Erreur ATR", 0
 
-    # Définition du prix du SL
-    prix_sl = prix_entree - distance_sl # On suppose un achat (Long)
+    # On calcule le Stop-Loss (en valeur absolue sur le graphique)
+    if "VENTE" in type_conseil:
+        prix_sl = prix_entree + distance_sl 
+    else:
+        prix_sl = prix_entree - distance_sl 
     
+    # Calcul de la taille selon l'actif
     if "EURUSD" in nom_actif or "GBPUSD" in nom_actif or "USDJPY" in nom_actif or "USDCHF" in nom_actif:
-        # Forex : 1 lot standard = 100 000. 1 pip = 0.0001 (sauf JPY)
-        pip_valeur = 10 if "JPY" not in nom_actif else 6.5
-        distance_pips = distance_sl / (0.0001 if "JPY" not in nom_actif else 0.01)
-        taille_lot = risque_max_usd / (distance_pips * pip_valeur)
+        # Forex : On convertit la distance (ex: 0.0015) en pips (15 pips)
+        # 1 pip = 0.0001 (sauf JPY = 0.01)
+        pip_size = 0.01 if "JPY" in nom_actif else 0.0001
+        distance_pips = distance_sl / pip_size
+        # 1 lot standard = 10$ par pip
+        valeur_pip = 10.0 
+        taille_lot = risque_max_usd / (distance_pips * valeur_pip)
         return f"{taille_lot:.2f} lots", prix_sl
         
     elif nom_actif == "GOLD":
-        # Or : 1 lot standard = 100 onces. 1$ de mouvement = 100$ de perte.
+        # Or : 1 lot = 100 onces. 1$ de mouvement = 100$ de perte.
+        # Donc taille = Risque / (Distance * 100)
         taille_lot = risque_max_usd / (distance_sl * 100)
         return f"{taille_lot:.2f} lots", prix_sl
         
     elif nom_actif in ["BTC", "ETH", "SOL"]:
-        # Crypto : Calcul en unités directes
+        # Crypto : On calcule en unités directes
         taille_unites = risque_max_usd / distance_sl
         return f"{taille_unites:.4f} unités", prix_sl
         
     elif nom_actif in ["NASDAQ", "FR40", "DE40", "DJ"]:
-        # Indices : 1 contrat = 1$ par point
+        # Indices : On suppose 1 contrat = 1$ par point
         taille_contrats = risque_max_usd / distance_sl
         return f"{taille_contrats:.2f} contrats", prix_sl
         
@@ -187,45 +188,32 @@ def envoyer_alerte_telegram(message):
 
 def analyser_marche(nom, closes, highs, lows):
     if not closes or len(closes) < 96: return None
-    votes = [
-        agent_trend(closes), 
-        agent_rsi(closes), 
-        agent_macd(closes), 
-        agent_smart_money(closes)
-    ]
+    votes = [agent_trend(closes), agent_rsi(closes), agent_macd(closes), agent_smart_money(closes)]
     buys = votes.count(1)
     sells = votes.count(-1)
     conseil_final = agent_conseil(closes, buys, sells)
     atr = calculer_atr(highs, lows, closes)
     
-    return {
-        "nom": nom, "prix": closes[-1], "buys": buys, "sells": sells, 
-        "conseil": conseil_final, "atr": atr
-    }
+    return {"nom": nom, "prix": closes[-1], "buys": buys, "sells": sells, "conseil": conseil_final, "atr": atr}
 
 # ==========================================
 # PARTIE 6 : LA BOUCLE DU BOT
 # ==========================================
 def boucle_bot():
-    print("🌍 Bot ULTIME (1H) avec ATR et Calculateur de Lots démarré...")
-    envoyer_alerte_telegram(f"🌍 *Bot ULTIME activé !* Capital : {CAPITAL_TOTAL}$ | Risque max : {CAPITAL_TOTAL * (RISQUE_POURCENT/100)}$ | Stop-Loss : 2x ATR.")
+    print("🌍 Bot ULTIME (1H) prêt. Calculs vérifiés.")
+    envoyer_alerte_telegram(f"🌍 *Bot ULTIME activé !* Capital : {CAPITAL_TOTAL}$ | Risque max : 100$.")
 
     derniers_signaux_forts = {
-        "BTC": "", "ETH": "", "SOL": "",
-        "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
+        "BTC": "", "ETH": "", "SOL": "", "GOLD": "", "NASDAQ": "", "FR40": "", "DE40": "", "DJ": "",
         "EURUSD": "", "GBPUSD": "", "USDJPY": "", "USDCHF": ""
     }
     
     while True:
         print(f"\n--- Analyse 1H {time.strftime('%H:%M:%S')} ---")
-        
-        # Liste des actifs à analyser
         actifs = {
             "BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD",
-            "GOLD": "GC=F", "NASDAQ": "NQ=F", "FR40": "^FCHI", 
-            "DE40": "^GDAXI", "DJ": "^DJI",
-            "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", 
-            "USDJPY": "USDJPY=X", "USDCHF": "USDCHF=X"
+            "GOLD": "GC=F", "NASDAQ": "NQ=F", "FR40": "^FCHI", "DE40": "^GDAXI", "DJ": "^DJI",
+            "EURUSD": "EURUSD=X", "GBPUSD": "GBPUSD=X", "USDJPY": "USDJPY=X", "USDCHF": "USDCHF=X"
         }
         
         resultats = []
@@ -239,28 +227,23 @@ def boucle_bot():
             if "ACHAT FORT" in r["conseil"] or "VENTE FORTE" in r["conseil"]:
                 if derniers_signaux_forts.get(nom) != "DEJA_ENVOYE":
                     
-                    if nom == "BTC": emoji = "₿"
-                    elif nom in ["ETH", "SOL"]: emoji = "🪙"
-                    elif nom == "GOLD": emoji = "🥇"
-                    elif nom in ["EURUSD", "GBPUSD", "USDJPY", "USDCHF"]: emoji = "💱"
-                    else: emoji = "📈"
+                    emoji = "₿" if nom=="BTC" else "🪙" if nom in ["ETH","SOL"] else "🥇" if nom=="GOLD" else "💱" if "USD" in nom else "📈"
                     
                     if "ACHAT" in r["conseil"]:
                         titre = "🚀🚀 *SIGNAL D'ACHAT FORT (1H)* 🚀🚀"
-                        action = "Opportunité d'entrée. Place ton Stop-Loss !"
+                        action = "Opportunité d'entrée."
                     else:
                         titre = "🩸🩸 *SIGNAL DE VENTE FORTE (1H)* 🩸🩸"
-                        action = "Le marché se retourne ! Vends ou sécurise tes gains."
+                        action = "Le marché se retourne !"
 
-                    # Calcul de la taille et du SL
-                    taille_pos, prix_sl = calculer_taille_position(nom, r['prix'], r['atr'])
+                    taille_pos, prix_sl = calculer_taille_position(nom, r['prix'], r['atr'], r["conseil"])
 
                     msg_alerte = (
                         f"{titre}\n\n"
                         f"{emoji} Actif : *{nom}*\n"
                         f"💰 Prix d'entrée : `{r['prix']:.4f} $`\n"
                         f"📊 Consensus : Achats {r['buys']}/4 | Ventes {r['sells']}/4\n\n"
-                        f"🛑 *Stop-Loss suggéré (2x ATR)* :\n"
+                        f"🛑 *Stop-Loss suggéré* :\n"
                         f"👉 `{prix_sl:.4f} $`\n\n"
                         f"📦 *Taille de position (Risque 1%)* :\n"
                         f"👉 `{taille_pos}`\n\n"
@@ -272,7 +255,7 @@ def boucle_bot():
                 derniers_signaux_forts[nom] = ""
 
         print("✅ Analyse terminée. Attente de 1 heure...")
-        time.sleep(3600) # Pause de 1 heure
+        time.sleep(3600)
 
 # ==========================================
 # LANCEMENT
